@@ -30,8 +30,9 @@ contract WenToken is ERC20 {
         uint256 amount;
     }
 
-    // dstGasLimit = ackGasLimit = 500K, ackType = 3, isReadCall = false, asm = ""
-    bytes public constant REQUEST_METADATA =
+    bytes32 immutable EMPTY_BYTES = keccak256(abi.encodePacked(""));
+    //default: dstGasLimit = ackGasLimit = 500K, ackType = 3, isReadCall = false, asm = ""
+    bytes public REQUEST_METADATA =
         hex"000000000007a1200000000000000000000000000007a1200000000000000000000000000000000000000000000000000300";
 
     string public description;
@@ -245,37 +246,42 @@ contract WenToken is ERC20 {
         gateway.setDappMetadata{value: msg.value}(feePayer);
     }
 
+    function updateRequestMetadata(
+        uint64 destGasLimit,
+        uint64 destGasPrice,
+        uint64 ackGasLimit,
+        uint64 ackGasPrice,
+        uint128 relayerFees,
+        uint8 ackType,
+        bool isReadCall,
+        string memory asmAddress
+    ) public onlyCreator {
+        REQUEST_METADATA = abi.encodePacked(
+            destGasLimit,
+            destGasPrice,
+            ackGasLimit,
+            ackGasPrice,
+            relayerFees,
+            ackType,
+            isReadCall,
+            asmAddress
+        );
+    }
+
     function transferCrossChain(
-        address from,
         address to, // cross-chain transfer accross evm only
         string memory dstChainId,
         uint256 amount
     ) public payable {
         validateIsPregradRestricted(to);
-
+        string memory dstTokenContract = dstTokenContracts[dstChainId];
         // dst contract not mapped
-        if (
-            keccak256(abi.encodePacked(dstTokenContracts[dstChainId])) ==
-            keccak256(abi.encodePacked(""))
-        ) {
+        if (keccak256(abi.encodePacked(dstTokenContract)) == EMPTY_BYTES) {
             revert Forbidden();
         }
-
-        if (
-            from != msg.sender &&
-            allowance[from][address(wenFoundry)] != type(uint256).max
-        ) // Pre-approve WenFoundry for improved UX
-        {
-            allowance[from][address(wenFoundry)] = type(uint256).max;
-        }
-
-        super._burn(from, amount);
+        super._burn(msg.sender, amount);
         bytes memory payload = abi.encode(to, amount);
-
-        bytes memory requestPacket = abi.encode(
-            dstTokenContracts[dstChainId],
-            payload
-        );
+        bytes memory requestPacket = abi.encode(dstTokenContract, payload);
         uint256 eventNonce = gateway.iSend{value: msg.value}(
             1,
             0,
@@ -284,7 +290,7 @@ contract WenToken is ERC20 {
             REQUEST_METADATA,
             requestPacket
         );
-        outBoundRequests[eventNonce] = OutBoundRequest(from, amount);
+        outBoundRequests[eventNonce] = OutBoundRequest(msg.sender, amount);
     }
 
     function mapDstWenTokenContracts(
@@ -310,7 +316,6 @@ contract WenToken is ERC20 {
         ) {
             revert Forbidden();
         }
-
         (address to, uint256 amount) = abi.decode(packet, (address, uint256));
         validateIsPregradRestricted(to);
         super._mint(to, amount);
