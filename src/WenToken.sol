@@ -253,7 +253,6 @@ contract WenToken is ERC20 {
         uint64 ackGasPrice,
         uint128 relayerFees,
         uint8 ackType,
-        bool isReadCall,
         string memory asmAddress
     ) public onlyCreator {
         REQUEST_METADATA = abi.encodePacked(
@@ -263,7 +262,7 @@ contract WenToken is ERC20 {
             ackGasPrice,
             relayerFees,
             ackType,
-            isReadCall,
+            false, // isReadCall: should be false
             asmAddress
         );
     }
